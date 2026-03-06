@@ -1,0 +1,202 @@
+<Window x:Class="LocalAIWriter.Views.SuggestionPopup"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:LocalAIWriter.ViewModels"
+        Title="Suggestion"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ShowInTaskbar="False"
+        Topmost="True"
+        SizeToContent="WidthAndHeight"
+        MaxWidth="460" MinWidth="240"
+        Focusable="False"
+        RenderOptions.BitmapScalingMode="HighQuality"
+        AutomationProperties.Name="AI Writing Suggestion"
+        KeyDown="OnKeyDown">
+
+    <Window.Resources>
+        <DropShadowEffect x:Key="PopupShadow"
+                          BlurRadius="32" ShadowDepth="6"
+                          Opacity="0.35" Direction="270"
+                          Color="#000000"/>
+        <local:FloatToPercentConverter x:Key="ConfToPercent"
+            xmlns:local="clr-namespace:LocalAIWriter.Views"/>
+
+        <!-- Fade-in animation -->
+        <Storyboard x:Key="FadeIn">
+            <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                             From="0" To="1" Duration="0:0:0.18"
+                             EasingFunction="{x:Null}"/>
+            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)"
+                             From="8" To="0" Duration="0:0:0.18">
+                <DoubleAnimation.EasingFunction>
+                    <CubicEase EasingMode="EaseOut"/>
+                </DoubleAnimation.EasingFunction>
+            </DoubleAnimation>
+        </Storyboard>
+    </Window.Resources>
+
+    <Window.Triggers>
+        <EventTrigger RoutedEvent="Window.Loaded">
+            <BeginStoryboard Storyboard="{StaticResource FadeIn}"/>
+        </EventTrigger>
+    </Window.Triggers>
+
+    <Border Style="{DynamicResource CardStyle}"
+            Effect="{StaticResource PopupShadow}"
+            Margin="10">
+        <Border.RenderTransform>
+            <TranslateTransform/>
+        </Border.RenderTransform>
+
+        <StackPanel>
+
+            <!-- ── Header ── -->
+            <DockPanel Margin="0,0,0,12">
+                <!-- Left: AI icon + title -->
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
+                    <Border Width="24" Height="24" CornerRadius="6"
+                            Background="{DynamicResource PrimaryBrush}"
+                            Margin="0,0,8,0">
+                        <TextBlock Text="✦" FontSize="11" Foreground="White"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <TextBlock Text="AI Suggestion"
+                               FontSize="13" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextPrimaryBrush}"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+
+                <!-- Right: route badge + latency + dismiss -->
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <Border Style="{DynamicResource PillStyle}" Margin="0,0,6,0">
+                        <TextBlock Text="{Binding RouteLabel}"
+                                   Style="{DynamicResource CaptionText}"/>
+                    </Border>
+                    <Border Style="{DynamicResource PillStyle}" Margin="0,0,6,0">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="{Binding LatencyMs, StringFormat={}{0}ms}"
+                                       Style="{DynamicResource CaptionText}"/>
+                        </StackPanel>
+                    </Border>
+                    <Button Style="{DynamicResource IconButton}"
+                            Command="{Binding DismissCommand}"
+                            Content="✕"
+                            FontSize="10"
+                            AutomationProperties.Name="Dismiss suggestion"
+                            TabIndex="2"/>
+                </StackPanel>
+            </DockPanel>
+
+            <!-- ── Separator ── -->
+            <Separator Margin="0,0,0,12"/>
+
+            <!-- ── Diff View ── -->
+            <ItemsControl ItemsSource="{Binding DiffSegments}" Margin="0,0,0,2">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapPanel/>
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Border x:Name="SegBorder"
+                                CornerRadius="3" Margin="0,2,2,2" Padding="3,1">
+                            <TextBlock x:Name="SegText"
+                                       Text="{Binding Text}"
+                                       FontSize="13"
+                                       FontFamily="Segoe UI Variable, Segoe UI, sans-serif">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Setter Property="Background" Value="Transparent"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Type}" Value="Added">
+                                            <Setter Property="Background" Value="{DynamicResource DiffAddedBrush}"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding Type}" Value="Removed">
+                                            <Setter Property="Background" Value="{DynamicResource DiffRemovedBrush}"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                        </Border>
+                        <DataTemplate.Triggers>
+                            <DataTrigger Binding="{Binding Type}" Value="Added">
+                                <Setter TargetName="SegText" Property="Foreground" Value="{DynamicResource DiffAddedTextBrush}"/>
+                                <Setter TargetName="SegText" Property="FontWeight" Value="SemiBold"/>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding Type}" Value="Removed">
+                                <Setter TargetName="SegText" Property="Foreground" Value="{DynamicResource DiffRemovedTextBrush}"/>
+                                <Setter TargetName="SegText" Property="TextDecorations" Value="Strikethrough"/>
+                                <Setter TargetName="SegText" Property="Opacity" Value="0.75"/>
+                            </DataTrigger>
+                        </DataTemplate.Triggers>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <!-- ── Confidence Bar ── -->
+            <DockPanel Margin="0,12,0,0">
+                <TextBlock Text="Confidence" DockPanel.Dock="Left"
+                           Style="{DynamicResource CaptionText}"
+                           Margin="0,0,8,0"
+                           VerticalAlignment="Center"/>
+                <TextBlock Text="{Binding Confidence, StringFormat={}{0:P0}}"
+                           DockPanel.Dock="Right"
+                           Style="{DynamicResource CaptionText}"
+                           Foreground="{DynamicResource SuccessBrush}"
+                           Margin="8,0,0,0"
+                           VerticalAlignment="Center"/>
+                <ProgressBar Value="{Binding Confidence, Converter={StaticResource ConfToPercent}}"
+                             Maximum="100"
+                             Foreground="{DynamicResource SuccessBrush}"
+                             VerticalAlignment="Center"/>
+            </DockPanel>
+
+            <!-- ── Actions ── -->
+            <Grid Margin="0,14,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="8"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Keyboard hint -->
+                <TextBlock Grid.Column="0"
+                           Text="Tab / Enter to accept · Esc to dismiss"
+                           Style="{DynamicResource CaptionText}"
+                           VerticalAlignment="Center"/>
+
+                <Button Grid.Column="1"
+                        Style="{DynamicResource SecondaryButton}"
+                        Content="Dismiss"
+                        Padding="14,7"
+                        Command="{Binding DismissCommand}"
+                        AutomationProperties.Name="Dismiss suggestion"
+                        TabIndex="1"/>
+
+                <Button Grid.Column="3"
+                        Style="{DynamicResource PrimaryButton}"
+                        Padding="14,7"
+                        Command="{Binding AcceptCommand}"
+                        AutomationProperties.Name="Accept suggestion"
+                        TabIndex="0"
+                        IsDefault="True">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="✓ " FontSize="12"/>
+                        <TextBlock Text="Accept"/>
+                    </StackPanel>
+                </Button>
+            </Grid>
+
+        </StackPanel>
+    </Border>
+</Window>

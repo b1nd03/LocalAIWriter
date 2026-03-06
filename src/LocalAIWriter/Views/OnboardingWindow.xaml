@@ -1,0 +1,78 @@
+<Window x:Class="LocalAIWriter.Views.OnboardingWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Welcome to LocalAI Writer"
+        Width="520" Height="420"
+        WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource BackgroundBrush}"
+        ResizeMode="NoResize">
+
+    <Grid Margin="32">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Content pages via step index -->
+        <StackPanel VerticalAlignment="Center">
+            <!-- Step 0: Welcome -->
+            <StackPanel Visibility="{Binding CurrentStep, Converter={StaticResource StepConverter}, ConverterParameter=0}">
+                <TextBlock Text="✏️ Welcome to LocalAI Writer" Style="{DynamicResource HeadingText}" TextAlignment="Center"/>
+                <TextBlock Text="Your private, offline AI writing assistant." Style="{DynamicResource BodyText}"
+                           TextAlignment="Center" Margin="0,12,0,0"/>
+                <TextBlock Text="All processing happens on your machine. No data ever leaves your device."
+                           Style="{DynamicResource BodyText}" TextAlignment="Center" Margin="0,8,0,0"/>
+            </StackPanel>
+
+            <!-- Step 1: How it works -->
+            <StackPanel Visibility="{Binding CurrentStep, Converter={StaticResource StepConverter}, ConverterParameter=1}">
+                <TextBlock Text="⌨️ How It Works" Style="{DynamicResource HeadingText}" TextAlignment="Center"/>
+                <TextBlock TextWrapping="Wrap" Style="{DynamicResource BodyText}" TextAlignment="Center" Margin="0,12">
+                    Press Ctrl+Space in any application to improve your text.
+                    LocalAI Writer will analyze your writing and suggest corrections
+                    for grammar, spelling, and clarity.
+                </TextBlock>
+            </StackPanel>
+
+            <!-- Step 2: Privacy -->
+            <StackPanel Visibility="{Binding CurrentStep, Converter={StaticResource StepConverter}, ConverterParameter=2}">
+                <TextBlock Text="🔒 100% Private" Style="{DynamicResource HeadingText}" TextAlignment="Center"/>
+                <TextBlock TextWrapping="Wrap" Style="{DynamicResource BodyText}" TextAlignment="Center" Margin="0,12">
+                    • Zero network connections — works completely offline
+                    • Text is processed in-memory only and immediately discarded
+                    • No logging, no telemetry, no cloud dependency
+                    • Your writing stays on your device, always
+                </TextBlock>
+            </StackPanel>
+
+            <!-- Step 3: Ready -->
+            <StackPanel Visibility="{Binding CurrentStep, Converter={StaticResource StepConverter}, ConverterParameter=3}">
+                <TextBlock Text="🚀 You're All Set!" Style="{DynamicResource HeadingText}" TextAlignment="Center"/>
+                <TextBlock TextWrapping="Wrap" Style="{DynamicResource BodyText}" TextAlignment="Center" Margin="0,12">
+                    LocalAI Writer is now running in your system tray.
+                    Right-click the tray icon for options, or press Ctrl+Space to start writing better!
+                </TextBlock>
+            </StackPanel>
+        </StackPanel>
+
+        <!-- Navigation -->
+        <DockPanel Grid.Row="1" Margin="0,16,0,0">
+            <Button DockPanel.Dock="Left" Content="Skip" Style="{DynamicResource SecondaryButton}"
+                    Command="{Binding SkipCommand}"/>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="← Back" Style="{DynamicResource SecondaryButton}"
+                        Command="{Binding PreviousStepCommand}" Margin="0,0,8,0"
+                        Visibility="{Binding CurrentStep, Converter={StaticResource NonZeroConverter}}"/>
+                <Button Content="Next →" Style="{DynamicResource PrimaryButton}"
+                        Command="{Binding NextStepCommand}"/>
+            </StackPanel>
+        </DockPanel>
+    </Grid>
+
+    <Window.Resources>
+        <local:StepToVisibilityConverter x:Key="StepConverter"
+            xmlns:local="clr-namespace:LocalAIWriter.Views"/>
+        <local:NonZeroToVisibilityConverter x:Key="NonZeroConverter"
+            xmlns:local="clr-namespace:LocalAIWriter.Views"/>
+    </Window.Resources>
+</Window>

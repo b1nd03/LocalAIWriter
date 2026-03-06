@@ -1,0 +1,44 @@
+<UserControl x:Class="LocalAIWriter.Views.PluginManagerView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="{DynamicResource BackgroundBrush}">
+    <StackPanel Margin="16">
+        <TextBlock Text="🔌 Plugins" Style="{DynamicResource HeadingText}" Margin="0,0,0,12"/>
+
+        <ItemsControl ItemsSource="{Binding Plugins}">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <Border Style="{DynamicResource CardStyle}" Margin="0,0,0,8">
+                        <DockPanel>
+                            <CheckBox DockPanel.Dock="Right" IsChecked="{Binding IsEnabled}"
+                                      VerticalAlignment="Center"/>
+                            <StackPanel>
+                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="14"
+                                           Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                <TextBlock Foreground="{DynamicResource TextMutedBrush}" FontSize="12">
+                                    <Run Text="v"/>
+                                    <Run Text="{Binding Version}"/>
+                                    <Run Text=" · "/>
+                                    <Run Text="{Binding Capabilities}"/>
+                                </TextBlock>
+                            </StackPanel>
+                        </DockPanel>
+                    </Border>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <TextBlock Text="No plugins installed" Style="{DynamicResource BodyText}"
+                   Visibility="{Binding Plugins.Count, Converter={StaticResource ZeroVisConverter}}"
+                   Margin="0,8"/>
+
+        <Button Content="Refresh" Style="{DynamicResource SecondaryButton}"
+                Command="{Binding RefreshPluginsCommand}" Margin="0,12,0,0"
+                HorizontalAlignment="Left"/>
+    </StackPanel>
+
+    <UserControl.Resources>
+        <local:ZeroCountToVisibilityConverter x:Key="ZeroVisConverter"
+            xmlns:local="clr-namespace:LocalAIWriter.Views"/>
+    </UserControl.Resources>
+</UserControl>

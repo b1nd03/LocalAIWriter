@@ -1,0 +1,55 @@
+<Window x:Class="LocalAIWriter.Views.PrivacyInfoWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Privacy Information"
+        Width="500" Height="400"
+        WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource BackgroundBrush}"
+        ResizeMode="NoResize">
+
+    <ScrollViewer Margin="32" VerticalScrollBarVisibility="Auto">
+        <StackPanel>
+            <TextBlock Text="🔒 Privacy Policy" Style="{DynamicResource HeadingText}" Margin="0,0,0,16"/>
+
+            <TextBlock Style="{DynamicResource BodyText}" TextWrapping="Wrap" Margin="0,0,0,12">
+                LocalAI Writer is designed with privacy as its core principle.
+            </TextBlock>
+
+            <TextBlock Text="Data Collection: NONE" FontWeight="Bold" FontSize="16"
+                       Foreground="{DynamicResource SuccessBrush}" Margin="0,0,0,8"/>
+
+            <TextBlock Style="{DynamicResource BodyText}" TextWrapping="Wrap">
+                • No text is ever stored to disk
+                • No text is ever sent over the network
+                • All AI inference runs locally on your CPU
+                • No analytics, no telemetry, no tracking
+                • No API keys or accounts required
+                • No internet connection required or used
+            </TextBlock>
+
+            <TextBlock Text="How Your Text is Processed:" FontWeight="SemiBold" FontSize="14"
+                       Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,16,0,8"/>
+            <TextBlock Style="{DynamicResource BodyText}" TextWrapping="Wrap">
+                1. You press Ctrl+Space (or text is auto-detected)
+                2. Text is read from the active application into RAM
+                3. AI model processes it entirely on your CPU
+                4. Corrections are shown in a popup
+                5. All text buffers are securely zeroed after use
+                6. Nothing is saved, logged, or transmitted
+            </TextBlock>
+
+            <TextBlock Text="Adaptive Learning:" FontWeight="SemiBold" FontSize="14"
+                       Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,16,0,8"/>
+            <TextBlock Style="{DynamicResource BodyText}" TextWrapping="Wrap">
+                The app learns which corrections you accept or dismiss.
+                This data contains NO user text — only statistics like
+                "user accepted 80% of grammar corrections". This file is
+                stored locally and can be deleted at any time.
+            </TextBlock>
+
+            <Button Content="Close" Style="{DynamicResource PrimaryButton}"
+                    HorizontalAlignment="Center" Margin="0,24,0,0"
+                    Click="OnClose"/>
+        </StackPanel>
+    </ScrollViewer>
+</Window>

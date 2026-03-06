@@ -1,0 +1,196 @@
+<Window x:Class="LocalAIWriter.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="LocalAI Writer — by b1nd03"
+        Width="700" Height="580"
+        WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource BackgroundBrush}"
+        MinWidth="550" MinHeight="450">
+
+    <Window.Resources>
+        <!-- Primary Button — uses theme accent -->
+        <Style x:Key="PrimaryBtn" TargetType="Button">
+            <Setter Property="Background" Value="{DynamicResource PrimaryBrush}"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Padding" Value="20,10"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="8"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource PrimaryHoverBrush}"/>
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Opacity" Value="0.5"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- Secondary Button — adapts to theme -->
+        <Style x:Key="SecBtn" TargetType="Button">
+            <Setter Property="Background" Value="{DynamicResource CardBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Padding" Value="16,8"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="6"
+                                Padding="{TemplateBinding Padding}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource CardHoverBrush}"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- HEADER -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,16">
+            <TextBlock FontSize="24" FontWeight="Bold" Foreground="{DynamicResource TextPrimaryBrush}">
+                ✏️ LocalAI Writer
+            </TextBlock>
+            <TextBlock FontSize="13" Foreground="{DynamicResource TextMutedBrush}" Margin="0,4,0,0">
+                Private AI writing assistant — local by default · by b1nd03
+            </TextBlock>
+        </StackPanel>
+
+        <!-- STATUS BAR -->
+        <Border Grid.Row="1" Background="{DynamicResource CardBrush}" CornerRadius="8"
+                Padding="16,10" Margin="0,0,0,12"
+                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
+            <DockPanel>
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
+                    <Ellipse Width="10" Height="10" Fill="{DynamicResource SuccessBrush}" Margin="0,0,8,0"
+                             x:Name="StatusDot"/>
+                    <TextBlock x:Name="StatusLabel" FontSize="13" VerticalAlignment="Center"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               Text="Ready — Type text below and click 'Improve Text'"/>
+                </StackPanel>
+                <StackPanel DockPanel.Dock="Right" HorizontalAlignment="Right">
+                    <TextBlock FontSize="11" Foreground="{DynamicResource TextMutedBrush}"
+                               HorizontalAlignment="Right" x:Name="ModelLabel"
+                               Text="Model: loading..."/>
+                    <TextBlock FontSize="12" Foreground="{DynamicResource TextMutedBrush}"
+                               HorizontalAlignment="Right" x:Name="LatencyLabel"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <!-- MAIN: Input + Output -->
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="16"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Input -->
+            <Border Grid.Column="0" Background="{DynamicResource CardBrush}" CornerRadius="8"
+                    BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Padding="12">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" FontSize="13" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,8">
+                        📝 Your Text
+                    </TextBlock>
+                    <TextBox x:Name="InputBox" AcceptsReturn="True" TextWrapping="Wrap"
+                             FontSize="14" FontFamily="Segoe UI"
+                             VerticalScrollBarVisibility="Auto"
+                             Background="{DynamicResource CardBrush}"
+                             Foreground="{DynamicResource TextPrimaryBrush}"
+                             BorderThickness="0" Padding="4"
+                             Text="i definately  thnk the the cat is beatiful and i cant beleive how wierd it looks">
+                    </TextBox>
+                </DockPanel>
+            </Border>
+
+            <!-- Output -->
+            <Border Grid.Column="2" Background="{DynamicResource CardBrush}" CornerRadius="8"
+                    BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Padding="12">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" FontSize="13" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,8">
+                        ✅ Improved Text
+                    </TextBlock>
+                    <TextBox x:Name="OutputBox" IsReadOnly="True" AcceptsReturn="True"
+                             TextWrapping="Wrap" FontSize="14" FontFamily="Segoe UI"
+                             VerticalScrollBarVisibility="Auto"
+                             Background="{DynamicResource CardBrush}"
+                             Foreground="{DynamicResource SuccessBrush}"
+                             BorderThickness="0" Padding="4"
+                             FontWeight="Medium"/>
+                </DockPanel>
+            </Border>
+        </Grid>
+
+        <!-- BUTTONS + CORRECTIONS -->
+        <DockPanel Grid.Row="3" Margin="0,12,0,0">
+            <Button Content="🧠 AI Improve" DockPanel.Dock="Left"
+                    Click="OnAiImproveClicked" x:Name="AiImproveButton"
+                    ToolTip="Deep AI-powered grammar correction (takes a few seconds)"
+                    Cursor="Hand" FontSize="14" FontWeight="SemiBold" Padding="20,10"
+                    Foreground="White" BorderThickness="0">
+                <Button.Template>
+                    <ControlTemplate TargetType="Button">
+                        <Border CornerRadius="8" Padding="{TemplateBinding Padding}">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                    <GradientStop Color="#8B5CF6" Offset="0"/>
+                                    <GradientStop Color="#6366F1" Offset="1"/>
+                                </LinearGradientBrush>
+                            </Border.Background>
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Button.Template>
+            </Button>
+            <Button Content="📋 Copy Result" Style="{StaticResource SecBtn}"
+                    DockPanel.Dock="Left" Margin="8,0,0,0" Click="OnCopyClicked"
+                    x:Name="CopyButton"/>
+            <Button Content="⚙️ Settings" Style="{StaticResource SecBtn}"
+                    DockPanel.Dock="Right" Click="OnSettingsClicked"/>
+            <TextBlock x:Name="CorrectionsLabel" VerticalAlignment="Center"
+                       HorizontalAlignment="Center"
+                       FontSize="12" Foreground="{DynamicResource TextMutedBrush}"/>
+        </DockPanel>
+
+        <!-- FOOTER -->
+        <Border Grid.Row="4" Margin="0,12,0,0" Padding="8,6" CornerRadius="6"
+                Background="{DynamicResource SurfaceBrush}">
+            <TextBlock FontSize="11" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap"
+                       TextAlignment="Center">
+                🔒 Text is sent only to your configured Ollama endpoint. No app-side logging of your text.
+            </TextBlock>
+        </Border>
+    </Grid>
+</Window>
