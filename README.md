@@ -24,7 +24,7 @@ No cloud APIs. No subscriptions. Complete privacy.
 ## Installation
 
 ### Option 1: Pre-compiled binaries (Coming Soon)
-Download the latest `.exe` from the [Releases](#) tab. It is a single self-contained file, no installation required.
+Download the latest `.exe` from the [Releases](https://github.com/b1nd03/LocalAIWriter/releases) tab. It is a single self-contained file, no installation required.
 
 ### Option 2: Build from Source
 1. Clone this repository:
