@@ -7,7 +7,7 @@ LocalAI Writer includes automated test coverage for grammar correction quality, 
 | Engine | Test Set | Target | Current Status | Notes |
 | --- | --- | ---: | --- | --- |
 | `qwen2.5:3b` through Ollama | BasicGrammar50 | Exact-match correction | 43/50 exact, 86.0%; mean 2,984 ms, p50 2,598 ms, p95 2,651 ms | Includes first cold request. Good local default, but still misses some grammar cases. |
-| `gemma2:2b` through Ollama | BasicGrammar50 | Exact-match correction | Not recorded; model pull timed out after 10 minutes on this machine | Keep as an optional lightweight candidate when the model is available locally. |
+| `gemma2:2b` through Ollama | BasicGrammar50 | Exact-match correction | 22/50 exact, 44.0%; mean 2,722 ms, p50 2,606 ms, p95 2,739 ms | Lightweight, but weaker prompt following on this benchmark; often returned fenced JSON instead of clean output. |
 | Rule-based fallback | AdvancedGrammar100 | >= 90% | 100/100 exact, 100.0% | Verified by `AdvancedGrammarAccuracyBenchmarkTests`. |
 | Rule-based fallback | NoChange100 | >= 95% unchanged | 100/100 unchanged, 100.0% | Verified by `NoChangeFalsePositiveBenchmarkTests`. |
 | Safety validation | RealWorld50 | 100% rejection of analysis-style output | 50/50 rejected, 100.0% | Verified by `RealWorldMetaOutputRejectionTests`. |
@@ -39,9 +39,11 @@ dotnet test LocalAIWriter.sln --configuration Release --no-build --filter "Fully
 
 - Date: 2026-06-19
 - Ollama version: `0.17.1`
-- Model tested through Ollama: `qwen2.5:3b`
-- BasicGrammar50 result: `43/50` exact matches, `86.0%`
-- Latency: mean `2,984 ms`, p50 `2,598 ms`, p95 `2,651 ms`
+- Models tested through Ollama: `qwen2.5:3b`, `gemma2:2b`
+- `qwen2.5:3b` BasicGrammar50 result: `43/50` exact matches, `86.0%`
+- `qwen2.5:3b` latency: mean `2,984 ms`, p50 `2,598 ms`, p95 `2,651 ms`
+- `gemma2:2b` BasicGrammar50 result: `22/50` exact matches, `44.0%`
+- `gemma2:2b` latency: mean `2,722 ms`, p50 `2,606 ms`, p95 `2,739 ms`
 - Rule-based regression gates: `AdvancedGrammar100 100%`, `NoChange100 100%`, `RealWorld50 safety rejection 100%`
 
 ## Notes
