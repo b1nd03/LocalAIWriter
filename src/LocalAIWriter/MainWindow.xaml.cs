@@ -14,6 +14,8 @@ public partial class MainWindow : Window
 {
     private RuleBasedEngine? _ruleEngine;
     private OllamaService? _ollama;
+    private NlpPipeline? _pipeline;
+    private CorrectionOptions _correctionOptions = CorrectionOptions.Default;
     private ILogger<MainWindow>? _logger;
 
     private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
@@ -153,6 +155,7 @@ public partial class MainWindow : Window
         {
             _ruleEngine = App.Services?.GetService<RuleBasedEngine>() ?? new RuleBasedEngine();
             _ollama = App.Services?.GetService<OllamaService>() ?? new OllamaService();
+            _pipeline = App.Services?.GetService<NlpPipeline>();
             _logger = App.Services?.GetService<ILogger<MainWindow>>();
         }
         catch
@@ -356,10 +359,11 @@ public partial class MainWindow : Window
             Dispatcher.Invoke(() => StatusLabel.Text = $"🧠 AI correcting {selectedText.Length} chars...");
 
             DebugLog("Step 3: AI correction...");
-            var result = await (_ollama ?? new OllamaService()).CorrectGrammarAsync(selectedText);
-            DebugLog($"Step 3: Success={result.Success}, Changed={result.CorrectedText != selectedText}, Msg={result.Message}");
+            var pipeline = ResolvePipeline();
+            var result = await pipeline.ProcessAsync(selectedText, _correctionOptions);
+            DebugLog($"Step 3: Valid={result.IsValid}, Changed={result.CorrectedText != selectedText}, Route={result.Route}");
 
-            if (result.Success && result.CorrectedText != selectedText)
+            if (result.IsValid && result.CorrectedText != selectedText)
             {
                 DebugLog("Step 4: Starting paste...");
                 string pasteError = "";
@@ -413,15 +417,15 @@ public partial class MainWindow : Window
                     OutputBox.Text = result.CorrectedText;
                     SetOutputColor(true);
                     StatusLabel.Text = $"✅ Corrected! See debug_log.txt for details.";
-                    CorrectionsLabel.Text = result.Message;
+                    CorrectionsLabel.Text = $"{result.Route} correction";
                 });
             }
             else
             {
-                var msg = result.Success ? "✅ Already correct!" : $"⚠️ {result.Message}";
+                var msg = result.IsValid ? "Already correct!" : "Correction rejected";
                 DebugLog($"Step 4: No paste needed — {msg}");
                 ShowTrayNotification("LocalAI Writer", msg,
-                    result.Success ? System.Windows.Forms.ToolTipIcon.Info : System.Windows.Forms.ToolTipIcon.Warning);
+                    result.IsValid ? System.Windows.Forms.ToolTipIcon.Info : System.Windows.Forms.ToolTipIcon.Warning);
                 Dispatcher.Invoke(() => StatusLabel.Text = msg);
             }
         }
@@ -461,24 +465,60 @@ public partial class MainWindow : Window
         try
         {
             var sw = Stopwatch.StartNew();
-            var ai = await (_ollama ?? new OllamaService()).CorrectGrammarAsync(inputText);
+            var pipeline = ResolvePipeline();
+            var ai = await pipeline.ProcessAsync(inputText, _correctionOptions);
             sw.Stop();
-            if (ai.Success)
+            if (ai.IsValid)
             {
                 OutputBox.Text = ai.CorrectedText; SetOutputColor(ai.CorrectedText != inputText);
                 bool changed = ai.CorrectedText != inputText;
-                CorrectionsLabel.Text = changed ? "✅ AI corrected" : "No changes";
-                StatusLabel.Text = changed ? $"Done — AI in {sw.ElapsedMilliseconds}ms" : $"Good! ({sw.ElapsedMilliseconds}ms)";
+                CorrectionsLabel.Text = changed ? $"✅ {ai.Route} corrected" : "No changes";
+                StatusLabel.Text = changed ? $"Done — {ai.Route} in {sw.ElapsedMilliseconds}ms" : $"Good! ({sw.ElapsedMilliseconds}ms)";
             }
             else
             {
                 OutputBox.Text = inputText;
-                StatusLabel.Text = $"⚠️ {ai.Message}";
+                StatusLabel.Text = "⚠️ Correction rejected";
             }
             LatencyLabel.Text = $"{sw.ElapsedMilliseconds}ms";
         }
         catch (Exception ex) { OutputBox.Text = inputText; StatusLabel.Text = $"Error: {ex.Message}"; }
         finally { AiImproveButton.IsEnabled = true; }
+    }
+
+    private NlpPipeline ResolvePipeline()
+    {
+        if (_pipeline != null)
+            return _pipeline;
+
+        if (App.Services?.GetService<NlpPipeline>() is { } pipeline)
+        {
+            _pipeline = pipeline;
+            return pipeline;
+        }
+
+        var ruleEngine = _ruleEngine ??= new RuleBasedEngine();
+        var textProcessor = new TextProcessor();
+        var tokenizer = new Tokenizer(Microsoft.Extensions.Logging.Abstractions.NullLogger<Tokenizer>.Instance);
+        var memory = new LocalAIWriter.Core.Memory.InferenceMemoryManager();
+        var modelManager = new ModelManager(
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<ModelManager>.Instance,
+            tokenizer,
+            memory);
+        var router = new ModelRouter(
+            ruleEngine,
+            modelManager,
+            _ollama ??= new OllamaService(),
+            textProcessor,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<ModelRouter>.Instance);
+
+        _pipeline = new NlpPipeline(
+            textProcessor,
+            ruleEngine,
+            router,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<NlpPipeline>.Instance);
+
+        return _pipeline;
     }
 
     private void SetOutputColor(bool changed) =>

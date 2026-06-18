@@ -3,13 +3,13 @@ using System.Net.Http;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 
 namespace LocalAIWriter.Core.Services;
 
 /// <summary>
-/// Service to communicate with Ollama for AI grammar correction.
-/// Supports configurable endpoint and model via settings.
+/// Communicates with Ollama for local grammar correction.
 /// </summary>
 public sealed class OllamaService : IDisposable
 {
@@ -20,26 +20,24 @@ public sealed class OllamaService : IDisposable
     private const int TimeoutSeconds = 120;
 
     private static readonly string SystemPrompt =
-        "You are a grammar correction tool. You receive text and return ONLY the corrected version.\n\n" +
-        "RULES:\n" +
-        "- Fix grammar, spelling, and punctuation ONLY\n" +
-        "- Output ONLY the corrected text, nothing else\n" +
-        "- NO explanations, NO reasoning, NO quotes around the output\n" +
-        "- Do NOT start with phrases like 'Here is', 'The corrected', 'Sure', 'We are given'\n" +
-        "- Keep the same meaning, tone, length, and style\n" +
-        "- If already correct, return it unchanged\n\n" +
-        "EXAMPLES:\n" +
-        "Input: he are too sweet\n" +
-        "Output: He is too sweet.\n\n" +
-        "Input: i cant beleive how beutiful the sunset is\n" +
-        "Output: I can't believe how beautiful the sunset is.\n\n" +
-        "Input: she dont like going to school becuz its boring\n" +
-        "Output: She doesn't like going to school because it's boring.";
+        "You are a grammar correction tool. Return ONLY compact JSON in this exact shape: " +
+        "{\"corrected_text\":\"...\",\"changed\":true}. " +
+        "Fix grammar, spelling, punctuation, and phrasing only. Keep the same meaning, tone, and style. " +
+        "Do not explain, score, analyze, or include markdown. If the text is already correct, return it unchanged with changed=false.";
 
     public OllamaService(ILogger<OllamaService>? logger = null)
     {
         _logger = logger;
         _http = new HttpClient
+        {
+            Timeout = TimeSpan.FromSeconds(TimeoutSeconds)
+        };
+    }
+
+    public OllamaService(HttpMessageHandler handler, ILogger<OllamaService>? logger = null)
+    {
+        _logger = logger;
+        _http = new HttpClient(handler)
         {
             Timeout = TimeSpan.FromSeconds(TimeoutSeconds)
         };
@@ -52,22 +50,17 @@ public sealed class OllamaService : IDisposable
             var logPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "debug_log.txt");
             File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss.fff}] OllamaService: {msg}{Environment.NewLine}");
         }
-        catch { }
+        catch
+        {
+        }
     }
 
-
-    /// <summary>
-    /// Gets the active Ollama endpoint and model from settings.
-    /// </summary>
     public (string Endpoint, string Model) GetActiveConfiguration()
     {
         var (endpoint, model) = LoadSettingsConfig();
         return (endpoint, model);
     }
 
-    /// <summary>
-    /// Load endpoint and model from settings.json, falling back to defaults.
-    /// </summary>
     private static (string Endpoint, string Model) LoadSettingsConfig()
     {
         var endpoint = DefaultBaseUrl;
@@ -84,26 +77,28 @@ public sealed class OllamaService : IDisposable
                 if (root.TryGetProperty("OllamaEndpoint", out var ep))
                 {
                     var val = ep.GetString()?.Trim().TrimEnd('/');
-                    if (!string.IsNullOrWhiteSpace(val)) endpoint = val;
+                    if (!string.IsNullOrWhiteSpace(val))
+                        endpoint = val;
                 }
+
                 if (root.TryGetProperty("OllamaModel", out var m))
                 {
                     var val = m.GetString()?.Trim();
-                    if (!string.IsNullOrWhiteSpace(val)) model = val;
+                    if (!string.IsNullOrWhiteSpace(val))
+                        model = val;
                 }
             }
         }
-        catch { /* use defaults */ }
+        catch
+        {
+        }
 
         return (endpoint, model);
     }
 
-
-    /// <summary>
-    /// Lists all models available on the configured (or overridden) Ollama endpoint.
-    /// </summary>
     public async Task<OllamaModelCatalog> ListAvailableModelsAsync(
-        string? endpointOverride = null, string? modelOverride = null)
+        string? endpointOverride = null,
+        string? modelOverride = null)
     {
         var (cfgEndpoint, cfgModel) = LoadSettingsConfig();
         var endpoint = string.IsNullOrWhiteSpace(endpointOverride) ? cfgEndpoint : endpointOverride.Trim().TrimEnd('/');
@@ -111,23 +106,30 @@ public sealed class OllamaService : IDisposable
 
         try
         {
-            var url = $"{endpoint}/api/tags";
-            var response = await _http.GetAsync(url);
+            var response = await _http.GetAsync($"{endpoint}/api/tags");
             if (!response.IsSuccessStatusCode)
-                return new OllamaModelCatalog(false, $"Endpoint responded with {(int)response.StatusCode}",
-                    endpoint, model, Array.Empty<string>());
+            {
+                return new OllamaModelCatalog(
+                    false,
+                    $"Endpoint responded with {(int)response.StatusCode}",
+                    endpoint,
+                    model,
+                    Array.Empty<string>());
+            }
 
             var json = await response.Content.ReadAsStringAsync();
             var models = ParseModelNames(json);
 
-            return new OllamaModelCatalog(true,
+            return new OllamaModelCatalog(
+                true,
                 models.Count > 0 ? $"Connected ({models.Count} models)" : "Connected (no models)",
-                endpoint, model, models);
+                endpoint,
+                model,
+                models);
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException)
         {
-            return new OllamaModelCatalog(false, "Cannot connect to Ollama endpoint",
-                endpoint, model, Array.Empty<string>());
+            return new OllamaModelCatalog(false, "Cannot connect to Ollama endpoint", endpoint, model, Array.Empty<string>());
         }
     }
 
@@ -148,28 +150,31 @@ public sealed class OllamaService : IDisposable
                 }
             }
         }
-        catch { }
-        return models.Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToArray();
+        catch
+        {
+        }
+
+        return models
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 
+    public Task<(bool Running, bool ModelReady, string Status)> CheckStatusAsync() =>
+        CheckStatusAsync(CancellationToken.None);
 
-    /// <summary>
-    /// Check if Ollama is running and the configured model is available.
-    /// </summary>
-    public async Task<(bool Running, bool ModelReady, string Status)> CheckStatusAsync()
+    public async Task<(bool Running, bool ModelReady, string Status)> CheckStatusAsync(CancellationToken ct)
     {
         var (endpoint, model) = LoadSettingsConfig();
         try
         {
-            var response = await _http.GetAsync($"{endpoint}/api/tags");
+            var response = await _http.GetAsync($"{endpoint}/api/tags", ct);
             if (!response.IsSuccessStatusCode)
                 return (false, false, "Ollama not responding");
 
-            var json = await response.Content.ReadAsStringAsync();
-            bool hasModel = json.Contains(model, StringComparison.OrdinalIgnoreCase);
-            return (true, hasModel,
-                hasModel ? "Ready" : $"Model not installed — run: ollama pull {model}");
+            var json = await response.Content.ReadAsStringAsync(ct);
+            var hasModel = json.Contains(model, StringComparison.OrdinalIgnoreCase);
+            return (true, hasModel, hasModel ? "Ready" : $"Model not installed - run: ollama pull {model}");
         }
         catch (HttpRequestException)
         {
@@ -179,27 +184,41 @@ public sealed class OllamaService : IDisposable
         {
             return (false, false, "Ollama connection timed out");
         }
+        catch (OperationCanceledException)
+        {
+            return (false, false, "Ollama status check canceled");
+        }
     }
 
+    public Task<OllamaResult> CorrectGrammarAsync(string text) =>
+        CorrectGrammarAsync(text, CorrectionSafetyMode.Conservative, CancellationToken.None);
 
-    /// <summary>
-    /// Correct grammar using the configured Ollama model.
-    /// </summary>
-    public async Task<OllamaResult> CorrectGrammarAsync(string text)
+    public Task<OllamaResult> CorrectGrammarAsync(string text, CancellationToken ct) =>
+        CorrectGrammarAsync(text, CorrectionSafetyMode.Conservative, ct);
+
+    public async Task<OllamaResult> CorrectGrammarAsync(
+        string text,
+        CorrectionSafetyMode safetyMode,
+        CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(text))
-            return new OllamaResult(text, false, "Empty input");
+            return new OllamaResult(text, false, "Empty input", false, false, "empty_input");
+
+        if (ct.IsCancellationRequested)
+            return new OllamaResult(text, false, "Request canceled", false, false, "canceled");
+
+        if (IsMetaEvaluationInput(text))
+            return new OllamaResult(text, false, "Meta evaluation input ignored", false, false, "meta_evaluation_input");
 
         try
         {
             var sentences = SplitIntoSentences(text);
             if (sentences.Count == 0)
-                return new OllamaResult(text, false, "No sentences found");
-
-            LogDebug($"Input: '{text}', Sentences: {sentences.Count}");
+                return new OllamaResult(text, false, "No sentences found", false, false, "empty_input");
 
             var correctedSentences = new List<string>();
-            int totalCorrections = 0;
+            var totalCorrections = 0;
+            var usedRetry = false;
 
             foreach (var sentence in sentences)
             {
@@ -209,52 +228,90 @@ public sealed class OllamaService : IDisposable
                     continue;
                 }
 
-                var corrected = await CorrectSingleSentenceAsync(sentence.Trim());
-                LogDebug($"  Sentence: '{sentence.Trim()}' → '{corrected}'");
+                var sentenceResult = await CorrectSingleSentenceAsync(sentence.Trim(), safetyMode, ct);
+                usedRetry |= sentenceResult.UsedRetry;
 
-                if (corrected != null && !string.Equals(corrected.Trim(), sentence.Trim(), StringComparison.Ordinal))
+                if (!sentenceResult.Success
+                    && sentenceResult.RejectedReason is "invalid_json" or "meta_evaluation_output" or "explanatory_output")
+                {
+                    return sentenceResult with { CorrectedText = text };
+                }
+
+                if (!string.Equals(sentenceResult.CorrectedText.Trim(), sentence.Trim(), StringComparison.Ordinal))
                     totalCorrections++;
 
-                correctedSentences.Add(corrected ?? sentence.Trim());
+                correctedSentences.Add(sentenceResult.CorrectedText);
             }
 
-            // Join with single space for single-line input, keep \n\n for multi-line
             var result = sentences.Count == 1
                 ? correctedSentences[0]
                 : string.Join("\n\n", correctedSentences);
+            var changed = !string.Equals(result.Trim(), text.Trim(), StringComparison.Ordinal) && totalCorrections > 0;
 
-            // Normalize comparison - ignore leading/trailing whitespace
-            bool changed = !string.Equals(result.Trim(), text.Trim(), StringComparison.Ordinal) && totalCorrections > 0;
-            LogDebug($"Result: '{result}', Changed={changed}, Corrections={totalCorrections}");
-
-            return new OllamaResult(result, true,
-                changed ? $"{totalCorrections} sentence{(totalCorrections > 1 ? "s" : "")} corrected"
-                        : "No changes needed");
+            return new OllamaResult(
+                result,
+                true,
+                changed ? $"{totalCorrections} sentence{(totalCorrections > 1 ? "s" : "")} corrected" : "No changes needed",
+                true,
+                usedRetry);
         }
         catch (HttpRequestException ex)
         {
             _logger?.LogError(ex, "Ollama connection failed");
-            return new OllamaResult(text, false, "Ollama not running — start it from the system tray");
+            return new OllamaResult(text, false, "Ollama not running - start it from the system tray", false, false, "connection_failed");
         }
         catch (TaskCanceledException)
         {
-            return new OllamaResult(text, false, "Request timed out — try shorter text");
+            return new OllamaResult(text, false, "Request timed out - try shorter text", false, false, "timeout");
+        }
+        catch (OperationCanceledException)
+        {
+            return new OllamaResult(text, false, "Request canceled", false, false, "canceled");
         }
         catch (Exception ex)
         {
             _logger?.LogError(ex, "Ollama error");
-            return new OllamaResult(text, false, $"Error: {ex.Message}");
+            return new OllamaResult(text, false, $"Error: {ex.Message}", false, false, "exception");
         }
     }
 
-    private async Task<string?> CorrectSingleSentenceAsync(string sentence)
+    private async Task<OllamaResult> CorrectSingleSentenceAsync(
+        string sentence,
+        CorrectionSafetyMode safetyMode,
+        CancellationToken ct)
     {
         var (endpoint, model) = LoadSettingsConfig();
+        var content = BuildChatRequest(sentence, model);
 
-        // Use /api/chat with message array — works much better with thinking models
+        var response = await _http.PostAsync($"{endpoint}/api/chat", content, ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            LogDebug($"Ollama HTTP error: {response.StatusCode}");
+            return new OllamaResult(sentence, false, $"Ollama HTTP error: {response.StatusCode}", false, false, "http_error");
+        }
+
+        var responseJson = await response.Content.ReadAsStringAsync(ct);
+        LogDebug($"Ollama raw response: {responseJson[..Math.Min(400, responseJson.Length)]}");
+
+        var first = BuildResultFromChatResponse(sentence, responseJson, safetyMode, usedRetry: false);
+        if (first.Success || first.RejectedReason != "invalid_json")
+            return first;
+
+        var retryContent = BuildChatRequest(sentence, model);
+        var retryResponse = await _http.PostAsync($"{endpoint}/api/chat", retryContent, ct);
+        if (!retryResponse.IsSuccessStatusCode)
+            return first with { UsedRetry = true };
+
+        var retryJson = await retryResponse.Content.ReadAsStringAsync(ct);
+        LogDebug($"Ollama retry raw response: {retryJson[..Math.Min(400, retryJson.Length)]}");
+        return BuildResultFromChatResponse(sentence, retryJson, safetyMode, usedRetry: true);
+    }
+
+    private static StringContent BuildChatRequest(string sentence, string model)
+    {
         var payload = new
         {
-            model = model,
+            model,
             stream = false,
             think = false,
             messages = new[]
@@ -271,41 +328,167 @@ public sealed class OllamaService : IDisposable
         };
 
         var jsonPayload = JsonSerializer.Serialize(payload);
-        var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
-
-        var response = await _http.PostAsync($"{endpoint}/api/chat", content);
-        if (!response.IsSuccessStatusCode)
-        {
-            LogDebug($"  Ollama HTTP error: {response.StatusCode}");
-            return sentence;
-        }
-
-        var responseJson = await response.Content.ReadAsStringAsync();
-        LogDebug($"  Ollama raw response: {responseJson.Substring(0, Math.Min(400, responseJson.Length))}");
-
-        using var doc = JsonDocument.Parse(responseJson);
-
-        // /api/chat returns { message: { role: "assistant", content: "..." } }
-        string? corrected = null;
-        if (doc.RootElement.TryGetProperty("message", out var messageProp)
-            && messageProp.TryGetProperty("content", out var contentProp))
-        {
-            corrected = contentProp.GetString()?.Trim();
-        }
-
-        if (string.IsNullOrWhiteSpace(corrected))
-        {
-            LogDebug("  No content in Ollama chat response");
-            return sentence;
-        }
-
-        LogDebug($"  Ollama corrected: '{corrected}'");
-        var validated = ValidateOutput(sentence, corrected);
-        LogDebug($"  After validation: '{validated}'");
-        return validated;
+        return new StringContent(jsonPayload, Encoding.UTF8, "application/json");
     }
 
-    // ──── Output Validation ────
+    private static OllamaResult BuildResultFromChatResponse(
+        string original,
+        string responseJson,
+        CorrectionSafetyMode safetyMode,
+        bool usedRetry)
+    {
+        if (!TryExtractStructuredCorrectionFromChatResponse(
+                responseJson,
+                out var structuredCorrection,
+                out var changed,
+                out var structuredReason))
+        {
+            var rawContent = ExtractChatContent(responseJson);
+            if (!string.IsNullOrWhiteSpace(rawContent) && LooksLikePlainCorrection(rawContent, original))
+            {
+                var plainValidation = ValidateCandidateOutput(original, rawContent, safetyMode);
+                return new OllamaResult(
+                    plainValidation.SanitizedText,
+                    plainValidation.IsValid,
+                    plainValidation.IsValid ? "Corrected" : "Output rejected",
+                    plainValidation.IsValid,
+                    usedRetry,
+                    plainValidation.Reason);
+            }
+
+            return new OllamaResult(
+                original,
+                false,
+                "Invalid Ollama response",
+                false,
+                usedRetry,
+                structuredReason ?? "invalid_json");
+        }
+
+        var candidate = changed ? structuredCorrection : original;
+        var validation = ValidateCandidateOutput(original, candidate, safetyMode);
+        return new OllamaResult(
+            validation.SanitizedText,
+            validation.IsValid,
+            validation.IsValid ? changed ? "Corrected" : "No changes needed" : "Output rejected",
+            validation.IsValid,
+            usedRetry,
+            validation.Reason);
+    }
+
+    public static bool TryExtractStructuredCorrectionFromChatResponse(
+        string responseJson,
+        out string correctedText,
+        out bool changed,
+        out string? reason)
+    {
+        correctedText = "";
+        changed = false;
+        reason = null;
+
+        var content = ExtractChatContent(responseJson);
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            reason = "missing_content";
+            return false;
+        }
+
+        try
+        {
+            using var contentDoc = JsonDocument.Parse(content);
+            var root = contentDoc.RootElement;
+            if (!root.TryGetProperty("corrected_text", out var correctedProperty))
+            {
+                reason = "missing_corrected_text";
+                return false;
+            }
+
+            correctedText = correctedProperty.GetString()?.Trim() ?? "";
+            if (root.TryGetProperty("changed", out var changedProperty)
+                && changedProperty.ValueKind is JsonValueKind.True or JsonValueKind.False)
+            {
+                changed = changedProperty.GetBoolean();
+            }
+            else
+            {
+                changed = true;
+            }
+
+            return !string.IsNullOrWhiteSpace(correctedText);
+        }
+        catch (JsonException)
+        {
+            reason = "invalid_json";
+            return false;
+        }
+    }
+
+    private static string? ExtractChatContent(string responseJson)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(responseJson);
+            if (doc.RootElement.TryGetProperty("message", out var messageProp)
+                && messageProp.TryGetProperty("content", out var contentProp))
+            {
+                return contentProp.GetString()?.Trim();
+            }
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+
+        return null;
+    }
+
+    public static bool IsMetaEvaluationInput(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return false;
+
+        var markers = new[]
+        {
+            "total sentences",
+            "correct:",
+            "incorrect:",
+            "accuracy:",
+            "score:",
+            "what this test shows",
+            "grammatically acceptable"
+        };
+
+        return markers.Count(marker => text.Contains(marker, StringComparison.OrdinalIgnoreCase)) >= 2;
+    }
+
+    public static CandidateValidation ValidateCandidateOutput(
+        string original,
+        string candidate,
+        CorrectionSafetyMode safetyMode)
+    {
+        if (string.IsNullOrWhiteSpace(candidate))
+            return new CandidateValidation(false, original, "empty_output");
+
+        var cleaned = SanitizeCandidateOutput(candidate);
+        if (IsMetaEvaluationInput(cleaned))
+            return new CandidateValidation(false, original, "meta_evaluation_output");
+
+        if (LooksExplanatory(cleaned))
+            return new CandidateValidation(false, original, "explanatory_output");
+
+        var originalLength = Math.Max(1, original.Trim().Length);
+        var ratio = cleaned.Length / (double)originalLength;
+        if (ratio < 0.2 || ratio > 2.5)
+            return new CandidateValidation(false, original, "length_ratio_out_of_bounds");
+
+        if (safetyMode == CorrectionSafetyMode.Conservative
+            && CountSentences(original) != CountSentences(cleaned))
+        {
+            return new CandidateValidation(false, original, "sentence_count_shift");
+        }
+
+        return new CandidateValidation(true, cleaned, null);
+    }
 
     private static string ValidateOutput(string original, string output)
     {
@@ -313,9 +496,7 @@ public sealed class OllamaService : IDisposable
             return original;
 
         output = output.Replace("```", "").Replace("**", "").Trim();
-
-        // Check if the output looks like AI reasoning (even if single-line)
-        bool looksLikeReasoning = output.Contains("We are given", StringComparison.OrdinalIgnoreCase)
+        var looksLikeReasoning = output.Contains("We are given", StringComparison.OrdinalIgnoreCase)
             || output.Contains("Step 1", StringComparison.OrdinalIgnoreCase)
             || output.Contains("Let me", StringComparison.OrdinalIgnoreCase)
             || output.Contains("sentence:", StringComparison.OrdinalIgnoreCase)
@@ -324,16 +505,9 @@ public sealed class OllamaService : IDisposable
             || output.Contains("Correction:", StringComparison.OrdinalIgnoreCase)
             || output.Contains('\n');
 
-        // If output is short, clean, and NOT reasoning — return directly
         if (!looksLikeReasoning && output.Length <= original.Length * 2.5)
-        {
             return CleanFinalOutput(original, output);
-        }
 
-        // Reasoning model output — extract the actual corrected text
-        LogDebug($"  ValidateOutput: Reasoning detected ({output.Length} chars), extracting corrected text...");
-
-        // Pattern 1: Look for quoted text after keywords like "Correction:", "corrected text is", etc.
         var extractionPatterns = new[]
         {
             @"[Cc]orrect(?:ion|ed\s+text)\s*(?:is|:)\s*""([^""]+)""",
@@ -342,62 +516,77 @@ public sealed class OllamaService : IDisposable
             @"[Rr]esult\s*:\s*""([^""]+)""",
             @"[Ff]inal\s*(?:text|answer|version|output)\s*(?:is|:)\s*""([^""]+)""",
             @"[Ss]hould\s+be\s*:?\s*""([^""]+)""",
-            @"[Ss]entence\s*:\s*""([^""]+)""",
+            @"[Ss]entence\s*:\s*""([^""]+)"""
         };
 
         foreach (var pattern in extractionPatterns)
         {
-            // Use RegexOptions.RightToLeft for "sentence:" to get the LAST match (corrected, not original)
-            var opts = pattern.Contains("entence")
-                ? System.Text.RegularExpressions.RegexOptions.RightToLeft
-                : System.Text.RegularExpressions.RegexOptions.None;
-            var match = System.Text.RegularExpressions.Regex.Match(output, pattern, opts);
+            var opts = pattern.Contains("entence") ? RegexOptions.RightToLeft : RegexOptions.None;
+            var match = Regex.Match(output, pattern, opts);
             if (match.Success && match.Groups[1].Value.Length > 0)
             {
                 var extracted = match.Groups[1].Value.Trim();
-                LogDebug($"  ValidateOutput: Extracted via pattern: '{extracted}'");
-                if (extracted.Length >= original.Length * 0.3 && extracted.Length <= original.Length * 3
+                if (extracted.Length >= original.Length * 0.3
+                    && extracted.Length <= original.Length * 3
                     && !extracted.Equals(original, StringComparison.OrdinalIgnoreCase))
+                {
                     return extracted;
+                }
             }
         }
 
-        // Pattern 2: Look for the LAST quoted text that's similar in length to the original
-        var quotedMatches = System.Text.RegularExpressions.Regex.Matches(output, @"""([^""]{3,})""");
+        var quotedMatches = Regex.Matches(output, @"""([^""]{3,})""");
         string? bestQuoted = null;
-        foreach (System.Text.RegularExpressions.Match m in quotedMatches)
+        foreach (Match m in quotedMatches)
         {
             var q = m.Groups[1].Value.Trim();
             if (q.Length >= original.Length * 0.5 && q.Length <= original.Length * 2 && q != original)
                 bestQuoted = q;
         }
-        if (bestQuoted != null)
-        {
-            LogDebug($"  ValidateOutput: Best quoted match: '{bestQuoted}'");
-            return bestQuoted;
-        }
 
-        // Pattern 3: Try first line only (old behavior)
+        if (bestQuoted != null)
+            return bestQuoted;
+
         var firstLine = output.Split('\n', StringSplitOptions.RemoveEmptyEntries)[0].Trim();
-        if (firstLine.Length <= original.Length * 2.5 && firstLine.Length >= original.Length * 0.3
+        if (firstLine.Length <= original.Length * 2.5
+            && firstLine.Length >= original.Length * 0.3
             && !looksLikeReasoning)
         {
             return CleanFinalOutput(original, firstLine);
         }
 
-        LogDebug($"  ValidateOutput: Could not extract, returning original");
         return original;
     }
 
     private static string CleanFinalOutput(string original, string output)
     {
-        // Remove common AI prefixes
-        var prefixes = new[] {
-            "Here is the corrected", "Here's the corrected",
-            "Corrected text:", "Corrected:", "The corrected",
-            "Sure,", "Sure!", "Of course", "I'd be happy",
-            "Here you go", "The sentence should be"
+        output = SanitizeCandidateOutput(output);
+        if (output.Length > original.Length * 2.5)
+            return original;
+        if (output.Length < original.Length * 0.2)
+            return original;
+        return output;
+    }
+
+    private static string SanitizeCandidateOutput(string output)
+    {
+        output = output.Replace("```", "").Replace("**", "").Trim();
+
+        var prefixes = new[]
+        {
+            "Here is the corrected",
+            "Here's the corrected",
+            "Corrected text:",
+            "Corrected:",
+            "The corrected",
+            "Sure,",
+            "Sure!",
+            "Of course",
+            "I'd be happy",
+            "Here you go",
+            "The sentence should be"
         };
+
         foreach (var prefix in prefixes)
         {
             if (output.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
@@ -408,14 +597,43 @@ public sealed class OllamaService : IDisposable
             }
         }
 
-        // Remove surrounding quotes
         if (output.StartsWith('"') && output.EndsWith('"') && output.Length > 2)
             output = output[1..^1];
 
-        if (output.Length > original.Length * 2.5) return original;
-        if (output.Length < original.Length * 0.2) return original;
-
         return output.Trim();
+    }
+
+    private static bool LooksLikePlainCorrection(string candidate, string original)
+    {
+        var cleaned = candidate.Trim();
+        if (!cleaned.Contains(' '))
+            return false;
+
+        return ValidateCandidateOutput(original, cleaned, CorrectionSafetyMode.Balanced).IsValid;
+    }
+
+    private static bool LooksExplanatory(string text)
+    {
+        var markers = new[]
+        {
+            "here is",
+            "the corrected",
+            "original:",
+            "correction:",
+            "explanation:",
+            "step 1",
+            "let me",
+            "we are given",
+            "what this test shows"
+        };
+
+        return markers.Any(marker => text.Contains(marker, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static int CountSentences(string text)
+    {
+        var matches = Regex.Matches(text.Trim(), @"[.!?]+(?:\s|$)");
+        return Math.Max(1, matches.Count);
     }
 
     private static List<string> SplitIntoSentences(string text)
@@ -428,6 +646,7 @@ public sealed class OllamaService : IDisposable
             if (!string.IsNullOrEmpty(trimmed))
                 result.Add(trimmed);
         }
+
         return result;
     }
 
@@ -435,9 +654,24 @@ public sealed class OllamaService : IDisposable
 }
 
 /// <summary>Result from Ollama grammar correction.</summary>
-public record OllamaResult(string CorrectedText, bool Success, string Message);
+public record OllamaResult(
+    string CorrectedText,
+    bool Success,
+    string Message,
+    bool ValidationPassed = true,
+    bool UsedRetry = false,
+    string? RejectedReason = null);
+
+/// <summary>Safety validation result for a model-generated correction.</summary>
+public readonly record struct CandidateValidation(
+    bool IsValid,
+    string SanitizedText,
+    string? Reason);
 
 /// <summary>Catalog of models from a configured Ollama endpoint.</summary>
 public record OllamaModelCatalog(
-    bool Success, string Status, string Endpoint,
-    string ActiveModel, IReadOnlyList<string> Models);
+    bool Success,
+    string Status,
+    string Endpoint,
+    string ActiveModel,
+    IReadOnlyList<string> Models);
